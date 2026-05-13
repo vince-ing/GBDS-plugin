@@ -1,0 +1,11 @@
+[general]
+name=GBDS Tools
+qgisMinimumVersion=3.4
+description=Client tools for connecting to and loading GBDS Map Layers.
+version=1.0
+author=GBDS
+email=GBDS@ig.utexas.edu
+about=A native QGIS plugin that provides a docked catalog to browse and load converted GBDS map layers.
+tracker=https://github.com/Gulf-Basin-Depositional-Synthesis
+homepage=https://github.com/Gulf-Basin-Depositional-Synthesis
+tags=gbds, map layers, catalog
