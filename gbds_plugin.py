@@ -54,6 +54,16 @@ class GBDSToolsPlugin:
         btn_master = QToolButton()
         btn_master.setDefaultAction(self.action_toggle_ribbon)
         btn_master.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        btn_master.setStyleSheet("""
+            QToolButton {
+                font-family: 'Segoe UI Semibold', 'Arial', sans-serif;
+                font-size: 9pt;
+                font-weight: 600;
+                letter-spacing: 1.5px;
+                padding: 0px 5px;
+                color: #1a1a1a;
+            }
+        """)
 
         toolbar = self.iface.pluginToolBar()
         self.master_toolbar_btn = toolbar.addWidget(btn_master)
