@@ -11,7 +11,7 @@ from qgis.PyQt.QtCore import Qt
 from qgis.gui import QgsMapTool
 from qgis.core import (
     QgsSettings, QgsRectangle, QgsFeatureRequest, 
-    QgsCoordinateTransform, QgsProject
+    QgsCoordinateTransform, QgsProject, QgsMapLayerType
 )
 
 class WellSelectionDialog(QDialog):
@@ -242,9 +242,10 @@ class GbdsWellIdentifyTool(QgsMapTool):
         # Get the map canvas coordinate projection
         map_crs = self.canvas.mapSettings().destinationCrs()
 
-        # Iterate through all currently checked/visible layers in the map
+        # Iterate through all currently rendered layers in the map
         for layer in self.canvas.layers():
-            if layer.type() != layer.VectorLayer or not layer.isVisible():
+            # If it's in canvas.layers(), it is already visible. Just check if it's a Vector.
+            if layer.type() != QgsMapLayerType.VectorLayer:
                 continue
             
             # Target any layer with "well" in the name, bypassing QGIS "Active Layer" rules
@@ -302,9 +303,7 @@ class GbdsWellIdentifyTool(QgsMapTool):
                         })
 
         if not wells_found:
-            # Uncomment if you want to notify the user when they click empty space
-            # self.iface.messageBar().pushInfo("GBDS", "No wells found at this click location.")
-            return
+            return 
 
         root_path = QgsSettings().value("gbds/root_path", "")
         if not root_path or not os.path.exists(root_path):
