@@ -9,7 +9,10 @@ from qgis.PyQt.QtWidgets import (
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.gui import QgsMapTool
-from qgis.core import QgsSettings, QgsRectangle, QgsFeatureRequest
+from qgis.core import (
+    QgsSettings, QgsRectangle, QgsFeatureRequest, 
+    QgsCoordinateTransform, QgsProject
+)
 
 class WellSelectionDialog(QDialog):
     """Dialog shown when a map click intersects multiple wells."""
@@ -71,10 +74,16 @@ class WellInfoDialog(QDialog):
         
         self.resize(700, 500)
         
-        # Try to load the JSON cache
+        # Load the JSON cache
         self.load_json_data()
         
-        self.setWindowTitle(f"GBDS Well {self.gbds_id} - {self.well_data.get('API', '')} - {self.well_data.get('Lease', '')}")
+        # Build Title dynamically
+        api = self.well_data.get('API', '')
+        lease = self.well_data.get('Lease', '')
+        title_parts = [f"GBDS Well {self.gbds_id}"]
+        if api: title_parts.append(api)
+        if lease: title_parts.append(lease)
+        self.setWindowTitle(" - ".join(title_parts))
         
         layout = QVBoxLayout(self)
         self.tabs = QTabWidget()
@@ -84,7 +93,7 @@ class WellInfoDialog(QDialog):
         self.setup_units_tab()
 
     def load_json_data(self):
-        # Uses the relative structure from the Base DB Folder
+        # Maps precisely to G:\...\Current_Database\GBDSTools\Resources\WellQueryCache\1001.json
         json_path = os.path.join(self.root_path, "GBDSTools", "Resources", "WellQueryCache", f"{self.gbds_id}.json")
         if os.path.exists(json_path):
             try:
@@ -190,6 +199,7 @@ class WellInfoDialog(QDialog):
         folder = folder_map.get(file_type)
         if not folder: return
         
+        # Structure maps to: Current_Database/Documentation/WellInfo/<Folder>
         search_dir = os.path.join(self.root_path, "Documentation", "WellInfo", folder)
         search_pattern = os.path.join(search_dir, f"*{self.gbds_id}*")
         matches = glob.glob(search_pattern)
@@ -205,69 +215,100 @@ class WellInfoDialog(QDialog):
 
 
 class GbdsWellIdentifyTool(QgsMapTool):
-    """Custom Map Tool using pure spatial intersection to avoid QGIS highlight bugs."""
+    """Custom Map Tool using spatial intersection and dynamic CRS projection."""
     def __init__(self, canvas, iface):
         super().__init__(canvas)
         self.canvas = canvas
         self.iface = iface
         self.setCursor(Qt.CrossCursor)
-        self.active_dialogs = [] # <-- FIX: Prevents Python from instantly deleting the dialog window
+        self.active_dialogs = [] 
 
     def canvasReleaseEvent(self, event):
         if event.button() != Qt.LeftButton:
             return
 
-        click_point = self.toMapCoordinates(event.pos())
+        map_pt = self.toMapCoordinates(event.pos())
         
         # Create a 5-pixel search box around the click
         tolerance = self.canvas.mapUnitsPerPixel() * 5
         search_rect = QgsRectangle(
-            click_point.x() - tolerance, click_point.y() - tolerance,
-            click_point.x() + tolerance, click_point.y() + tolerance
+            map_pt.x() - tolerance, map_pt.y() - tolerance,
+            map_pt.x() + tolerance, map_pt.y() + tolerance
         )
 
         wells_found = []
         seen_ids = set()
+        
+        # Get the map canvas coordinate projection
+        map_crs = self.canvas.mapSettings().destinationCrs()
 
         # Iterate through all currently checked/visible layers in the map
         for layer in self.canvas.layers():
-            if layer.type() == layer.VectorLayer and "Well" in layer.name():
-                
-                request = QgsFeatureRequest().setFilterRect(search_rect)
-                for feat in layer.getFeatures(request):
+            if layer.type() != layer.VectorLayer or not layer.isVisible():
+                continue
+            
+            # Target any layer with "well" in the name, bypassing QGIS "Active Layer" rules
+            if "well" not in layer.name().lower():
+                continue
+
+            # 1. Handle Coordinate Transformation dynamically
+            layer_rect = search_rect
+            if layer.crs() != map_crs:
+                try:
+                    xform = QgsCoordinateTransform(map_crs, layer.crs(), QgsProject.instance())
+                    layer_rect = xform.transformBoundingBox(search_rect)
+                except Exception:
+                    pass
+
+            request = QgsFeatureRequest().setFilterRect(layer_rect)
+            
+            for feat in layer.getFeatures(request):
+                # Ensure accurate intersection within the box
+                if feat.hasGeometry() and feat.geometry().intersects(layer_rect):
                     
-                    # Search common attribute names for the ID
                     gbds_id = None
-                    id_fields = ["GbdsId", "Gbds_Wel", "GBDS_ID", "Well_ID", "WellData_WellId", "WellData_Id"]
-                    for f_name in id_fields:
-                        idx = feat.fieldNameIndex(f_name)
-                        if idx != -1:
-                            val = feat.attribute(idx)
-                            if val:
-                                gbds_id = val
-                                break
-                                
-                    if gbds_id and str(gbds_id) not in seen_ids:
-                        seen_ids.add(str(gbds_id))
+                    api = ""
+                    lease = ""
+                    
+                    # 2. Fuzzy Field matching (Checks both internal names and User Aliases)
+                    for idx, field in enumerate(layer.fields()):
+                        fname = field.name().lower()
+                        falias = field.alias().lower() if field.alias() else ""
+                        val = feat.attribute(idx)
                         
-                        # Grab extra info for disambiguation list
-                        api_idx = feat.fieldNameIndex("API")
-                        api = feat.attribute(api_idx) if api_idx != -1 else ""
-                        lease_idx = feat.fieldNameIndex("Lease")
-                        lease = feat.attribute(lease_idx) if lease_idx != -1 else ""
+                        if val in (None, "", "NULL"): 
+                            continue
                         
+                        # Match ID
+                        if not gbds_id and (fname in ['gbds_wel', 'gbds_id', 'gbdsid', 'gbdswellid'] or 
+                                            ('gbds' in fname and 'id' in fname) or 
+                                            ('gbds' in falias and 'id' in falias)):
+                            gbds_id = str(val)
+                        
+                        # Match API
+                        elif not api and fname == 'api':
+                            api = str(val)
+                            
+                        # Match Lease
+                        elif not lease and fname == 'lease':
+                            lease = str(val)
+
+                    if gbds_id and gbds_id not in seen_ids:
+                        seen_ids.add(gbds_id)
                         wells_found.append({
-                            "id": str(gbds_id),
-                            "api": str(api),
-                            "lease": str(lease)
+                            "id": gbds_id,
+                            "api": api,
+                            "lease": lease
                         })
 
         if not wells_found:
-            return # Ignore clicks on empty map areas
+            # Uncomment if you want to notify the user when they click empty space
+            # self.iface.messageBar().pushInfo("GBDS", "No wells found at this click location.")
+            return
 
         root_path = QgsSettings().value("gbds/root_path", "")
         if not root_path or not os.path.exists(root_path):
-            self.iface.messageBar().pushWarning("Setup Required", "Please click '⚙️ GBDS Connection' in the sidebar first.")
+            self.iface.messageBar().pushWarning("Setup Required", "Please click '⚙️ GBDS Connection' in the sidebar first to set your database location.")
             return
 
         if len(wells_found) == 1:
