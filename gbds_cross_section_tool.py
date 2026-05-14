@@ -177,3 +177,5 @@ class GbdsCrossSectionTool(QgsMapTool):
                 "Not Found", 
                 f"Could not find a PDF for transect ID '{t_id}' or Name '{t_name}' in:\n{base_dir}"
             )
+
+#diff
