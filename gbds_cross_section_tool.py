@@ -112,7 +112,6 @@ class GbdsCrossSectionTool(QgsMapTool):
         map_crs = self.canvas.mapSettings().destinationCrs()
 
         for layer in self.canvas.layers():
-            # FIX: Removed the buggy .isVisible() check. If it's in canvas.layers(), it's visible.
             if layer.type() != QgsMapLayerType.VectorLayer:
                 continue
             
@@ -138,25 +137,31 @@ class GbdsCrossSectionTool(QgsMapTool):
                     t_id = ""
                     t_name = ""
                     
-                    # Fuzzy Field matching for Transects
                     for idx, field in enumerate(layer.fields()):
                         fname = field.name().lower()
-                        falias = field.alias().lower() if field.alias() else ""
                         val = feat.attribute(idx)
                         
                         if val in (None, "", "NULL"): continue
                         
-                        # Match ID
-                        if not t_id and (fname in ['id', 'transect_i', 'objectid'] or 'id' in fname):
-                            t_id = str(val)
+                        val_str = str(val).strip()
+                        
+                        # MATCH ID: Exclude internal fields like objectid, fid, shape
+                        if not t_id and fname in ['id', 'transect_id', 'gbds_id', 'transect_i']:
+                            # CRITICAL FIX: Do not accept '0' as a valid ID for searching files
+                            if val_str and val_str != '0':
+                                t_id = val_str
                             
-                        # Match Name
-                        if not t_name and (fname in ['name', 'transect_n', 'file_name'] or 'name' in fname):
-                            t_name = str(val)
+                        # MATCH NAME
+                        if not t_name and fname in ['name', 'transect_n', 'file_name', 'transect_name']:
+                            t_name = val_str
 
-                    if t_id and t_id not in seen_ids:
-                        seen_ids.add(t_id)
-                        transects_found.append({"id": t_id, "name": t_name})
+                    # We must have at least an ID or a Name to consider it a valid transect
+                    if t_id or t_name:
+                        # Use Name as fallback key for seen_ids if ID is empty
+                        hash_key = t_id if t_id else t_name 
+                        if hash_key not in seen_ids:
+                            seen_ids.add(hash_key)
+                            transects_found.append({"id": t_id, "name": t_name})
 
         if not transects_found:
             return 
@@ -182,16 +187,23 @@ class GbdsCrossSectionTool(QgsMapTool):
         
         found_pdf = None
         
-        # Priority 1: Search by ID (e.g., *1001*.pdf)
+        # Priority 1: Search by Strict ID Prefix (e.g., "1008_*.pdf")
         if t_id:
             for sub in sub_dirs:
-                search_path = os.path.join(base_dir, sub, f"*{t_id}*.pdf")
+                # First try with underscore (e.g., 1008_Section.pdf)
+                search_path = os.path.join(base_dir, sub, f"{t_id}_*.pdf")
                 matches = glob.glob(search_path)
+                
+                # If that fails, try exact ID (e.g., 1008.pdf)
+                if not matches:
+                    search_path = os.path.join(base_dir, sub, f"{t_id}.pdf")
+                    matches = glob.glob(search_path)
+                    
                 if matches:
                     found_pdf = matches[0]
                     break
                     
-        # Priority 2: Search by Name if ID failed
+        # Priority 2: Search by Name if ID failed or was '0'
         if not found_pdf and t_name:
             for sub in sub_dirs:
                 search_path = os.path.join(base_dir, sub, f"*{t_name}*.pdf")
