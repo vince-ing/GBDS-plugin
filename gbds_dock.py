@@ -17,7 +17,6 @@ class DraggableTreeView(QTreeView):
         self.setDragDropMode(QTreeView.DragOnly)
 
     def mouseMoveEvent(self, event):
-        """Initiate a drag when the mouse moves while a button is held."""
         if not (event.buttons() & Qt.LeftButton):
             return super().mouseMoveEvent(event)
 
@@ -29,18 +28,14 @@ class DraggableTreeView(QTreeView):
         if not (os.path.isfile(file_path) and file_path.lower().endswith(".qlr")):
             return super().mouseMoveEvent(event)
 
-        # Build a MIME payload carrying the file URL
         mime = QMimeData()
         mime.setUrls([QUrl.fromLocalFile(file_path)])
-        mime.setText(file_path)  # Fallback plain-text path
+        mime.setText(file_path)
 
         drag = QDrag(self)
         drag.setMimeData(mime)
 
-        # Execute the drag; if it's accepted anywhere, also load the layer
-        result = drag.exec_(Qt.CopyAction)
-        if result == Qt.CopyAction:
-            self.load_callback(file_path)
+        drag.exec_(Qt.CopyAction)  # ← just execute the drag, don't check the result
 
 
 class GBDSCatalogDock(QDockWidget):
