@@ -103,3 +103,4 @@ class GBDSToolsPlugin:
             self.action_query_well.setChecked(False)
         if tool != self.cross_tool:
             self.action_cross_section.setChecked(False)
+#diff
