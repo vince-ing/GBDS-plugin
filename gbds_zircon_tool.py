@@ -175,16 +175,25 @@ class GbdsZirconTool(QgsMapTool):
 
     def _open_plot(self, sample_data, root_path):
         plot_file = sample_data.get("plot_file")
+        if not plot_file:
+            QMessageBox.warning(self.iface.mainWindow(), "Error", "No plot file associated with this sample.")
+            return
+
+        # Normalize slashes for cross-platform compatibility (Windows vs Mac/Linux)
+        plot_file = plot_file.replace("\\", os.sep).replace("/", os.sep)
         
-        # Build the path: Projects/Detrital Zircon Analysis/Plots/<Plot_File>
-        base_dir = os.path.join(root_path, "Projects", "Detrital Zircon Analysis", "Plots")
+        # Case 1: The database stores the relative path starting with 'Projects'
+        if plot_file.startswith("Projects"):
+            target_path = os.path.join(root_path, plot_file)
+        else:
+            # Case 2: The database stores just the filename
+            target_path = os.path.join(root_path, "Projects", "Detrital Zircon Analysis", "Plots", plot_file)
         
-        # Try exact match first
-        target_path = os.path.join(base_dir, plot_file)
-        
-        # If exact match fails (e.g. extension missing in attribute), try wildcard
+        # If exact match fails (e.g., extension missing in attribute), try wildcard
         if not os.path.exists(target_path):
-            matches = glob.glob(os.path.join(base_dir, f"{plot_file}*"))
+            base_dir = os.path.dirname(target_path)
+            file_name = os.path.basename(target_path)
+            matches = glob.glob(os.path.join(base_dir, f"{file_name}*"))
             if matches:
                 target_path = matches[0]
 
@@ -197,5 +206,5 @@ class GbdsZirconTool(QgsMapTool):
             QMessageBox.information(
                 self.iface.mainWindow(), 
                 "Not Found", 
-                f"Could not find plot image '{plot_file}' in:\n{base_dir}"
+                f"Could not find plot image '{plot_file}' within the GBDS database folder."
             )
