@@ -41,7 +41,7 @@ class GBDSToolsPlugin:
         self.las_tool = GbdsLasTool(self.iface.mapCanvas(), self.iface)
         
         # 3. Create Master Toggle for the Native QGIS Toolbar
-        self.action_toggle_ribbon = QAction("GBDS Tools", self.iface.mainWindow())
+        self.action_toggle_ribbon = QAction("GBDS", self.iface.mainWindow())
         self.action_toggle_ribbon.setCheckable(True)
         self.action_toggle_ribbon.setChecked(False)
         self.action_toggle_ribbon.setToolTip("Toggle GBDS Ribbon")
@@ -52,7 +52,7 @@ class GBDSToolsPlugin:
         btn_master.setDefaultAction(self.action_toggle_ribbon)
         btn_master.setToolButtonStyle(Qt.ToolButtonTextOnly)
         font = btn_master.font()
-        font.setBold(True)
+        #font.setBold(True)
         btn_master.setFont(font)
         
         # Inject master button into QGIS Plugins Toolbar
