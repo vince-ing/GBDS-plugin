@@ -59,8 +59,8 @@ class GBDSToolsPlugin:
                 font-family: 'Segoe UI Semibold', 'Arial', sans-serif;
                 font-size: 9pt;
                 font-weight: 600;
-                letter-spacing: 1.5px;
-                padding: 0px 5px;
+                letter-spacing: 0.5px;
+                padding: 0px 2px;
                 color: #1a1a1a;
             }
         """)
