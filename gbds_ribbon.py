@@ -1,46 +1,54 @@
 import os
+import glob
 from qgis.PyQt.QtWidgets import (
     QDockWidget, QWidget, QVBoxLayout, QHBoxLayout, 
-    QTabWidget, QToolButton, QMessageBox
+    QToolButton, QLabel, QMessageBox, QFrame, QSizePolicy, QGridLayout
 )
 from qgis.PyQt.QtCore import Qt, QUrl, QSize
 from qgis.PyQt.QtGui import QIcon, QDesktopServices
 from qgis.core import QgsSettings
 
 class GBDSRibbon(QDockWidget):
-    """A Top-Docked Widget mimicking the ArcGIS Pro Ribbon."""
+    """A Top-Docked Widget perfectly mimicking the flattened ArcGIS Pro Ribbon."""
     def __init__(self, iface, plugin, parent=None):
         super().__init__("GBDS Tools", parent)
         self.iface = iface
         self.plugin = plugin
         self.setAllowedAreas(Qt.TopDockWidgetArea)
         
-        # Keep the title bar clean
-        self.setFeatures(QDockWidget.DockWidgetClosable | QDockWidget.DockWidgetFloatable)
+        # 1. HIDE THE CHUNKY TITLE BAR
+        self.setTitleBarWidget(QWidget())
 
         # Main Container
         self.container = QWidget()
-        self.layout = QVBoxLayout(self.container)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        # Force the widget to be as vertically compact as possible
+        self.container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         
-        # Tabs
-        self.tabs = QTabWidget()
-        self.layout.addWidget(self.tabs)
+        # Flattened Horizontal Layout
+        self.main_layout = QHBoxLayout(self.container)
+        self.main_layout.setContentsMargins(5, 5, 5, 2)
+        self.main_layout.setSpacing(10)
         self.setWidget(self.container)
 
-        # Build Tabs
-        self._setup_config_tab()
-        self._setup_browse_tab()
-        self._setup_tools_tab()
-        self._setup_help_tab()
+        # Build Ribbon Groups
+        self._build_config_group()
+        self._add_separator()
+        self._build_browse_group()
+        self._add_separator()
+        self._build_tools_group()
+        self._add_separator()
+        self._build_help_group()
+        
+        # Push everything to the left side of the screen
+        self.main_layout.addStretch()
 
     def _get_icon(self, icon_name):
-        """Helper to safely load 32x32 icons from the images folder."""
-        icon_path = os.path.join(os.path.dirname(__file__), 'images', icon_name)
-        return QIcon(icon_path)
+        """Loads icons relative to this plugin file's location."""
+        path = os.path.join(os.path.dirname(__file__), 'images', icon_name)
+        return QIcon(path)
 
-    def _create_tool_button(self, text, icon_name, tooltip="", checkable=False):
-        """Helper to create standard ribbon buttons."""
+    def _create_large_button(self, text, icon_name, tooltip="", checkable=False):
+        """Builds a 32x32 button with text underneath."""
         btn = QToolButton()
         btn.setText(text)
         btn.setIcon(self._get_icon(icon_name))
@@ -48,24 +56,58 @@ class GBDSRibbon(QDockWidget):
         btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
         btn.setToolTip(tooltip)
         btn.setCheckable(checkable)
-        
-        # Ensure minimum width so text isn't cut off
-        btn.setMinimumWidth(75) 
+        btn.setAutoRaise(True) # Gives it the flat ribbon feel
+        btn.setMinimumWidth(55)
         return btn
 
-    def _add_tab(self, name):
-        """Helper to create and add a tab."""
-        tab = QWidget()
-        layout = QHBoxLayout(tab)
-        layout.setAlignment(Qt.AlignLeft)
-        self.tabs.addTab(tab, name)
-        return layout
+    def _create_small_button(self, text, icon_name, tooltip="", checkable=False):
+        """Builds a 16x16 button with text beside it."""
+        btn = QToolButton()
+        btn.setText(text)
+        btn.setIcon(self._get_icon(icon_name))
+        btn.setIconSize(QSize(16, 16))
+        btn.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        btn.setToolTip(tooltip)
+        btn.setCheckable(checkable)
+        btn.setAutoRaise(True)
+        # Ensure the text aligns to the left if stacked
+        btn.setStyleSheet("text-align: left;")
+        return btn
+
+    def _create_group(self, title):
+        """Scaffolds the layout for a ribbon section (Buttons on top, Title on bottom)."""
+        group_widget = QWidget()
+        layout = QVBoxLayout(group_widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(2)
+        
+        # Where the buttons will go
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(5)
+        layout.addLayout(content_layout)
+        
+        # The small gray text at the bottom of the group
+        lbl = QLabel(title)
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("color: #666666; font-size: 8pt; margin-top: 2px;")
+        layout.addWidget(lbl)
+        
+        self.main_layout.addWidget(group_widget)
+        return content_layout
+
+    def _add_separator(self):
+        """Draws a vertical line between ribbon groups."""
+        line = QFrame()
+        line.setFrameShape(QFrame.VLine)
+        line.setFrameShadow(QFrame.Sunken)
+        line.setStyleSheet("color: #CCCCCC;")
+        self.main_layout.addWidget(line)
 
     def _open_gbds_path(self, *subdirs):
-        """Helper to safely open local GBDS folders/files."""
         root_path = QgsSettings().value("gbds/root_path", "")
         if not root_path or not os.path.exists(root_path):
-            self.iface.messageBar().pushWarning("Setup Required", "Please click 'Setup' in the Config tab first.")
+            self.iface.messageBar().pushWarning("Setup Required", "Please click 'Setup' in the Config section first.")
             return
 
         target_path = os.path.join(root_path, *subdirs)
@@ -77,72 +119,83 @@ class GBDSRibbon(QDockWidget):
         else:
             self.iface.messageBar().pushWarning("Not Found", f"Could not find:\n{target_path}")
 
-    # --- TAB SETUPS ---
+    # --- UI BUILDING METHODS ---
 
-    def _setup_config_tab(self):
-        layout = self._add_tab("Config")
+    def _build_config_group(self):
+        content = self._create_group("Config")
+        vbox = QVBoxLayout()
+        vbox.setSpacing(2)
         
-        self.btn_setup = self._create_tool_button("Setup", "AddIn32.png", "Configure GBDS Root Folder")
+        self.btn_setup = self._create_small_button("Setup", "AddIn16.png", "Configure GBDS Root Folder")
         self.btn_setup.clicked.connect(lambda: self.plugin.dock_widget.run_setup())
-        layout.addWidget(self.btn_setup)
         
-        self.btn_about = self._create_tool_button("About", "GenericButtonBlue32.png", "About GBDS Tools")
+        self.btn_about = self._create_small_button("About", "GenericButtonBlue16.png", "About GBDS Tools")
         self.btn_about.clicked.connect(lambda: QMessageBox.information(self, "About", "GBDS QGIS Tools\nVersion 1.0"))
-        layout.addWidget(self.btn_about)
-
-    def _setup_browse_tab(self):
-        layout = self._add_tab("Browse")
         
-        self.btn_maps = self._create_tool_button("Maps", "GenericButtonOrange32.png", "Browse Preconstructed Maps")
+        vbox.addWidget(self.btn_setup)
+        vbox.addWidget(self.btn_about)
+        content.addLayout(vbox)
+
+    def _build_browse_group(self):
+        content = self._create_group("Browse")
+        
+        # Use a grid layout to stack the 4 small browse buttons cleanly
+        grid = QGridLayout()
+        grid.setSpacing(2)
+        grid.setContentsMargins(0, 0, 0, 0)
+        
+        self.btn_maps = self._create_small_button("Maps", "GenericButtonOrange16.png")
         self.btn_maps.clicked.connect(lambda: self._open_gbds_path("Preconstructed_Maps"))
-        layout.addWidget(self.btn_maps)
         
-        self.btn_references = self._create_tool_button("References", "References32.png", "Open Reference Library")
+        self.btn_references = self._create_small_button("References", "References16.png")
         self.btn_references.clicked.connect(lambda: self._open_gbds_path("References", "Library"))
-        layout.addWidget(self.btn_references)
         
-        self.btn_map_layers = self._create_tool_button("Map Layers", "MapLayers32.png", "Toggle Catalog Pane", checkable=True)
+        self.btn_map_layers = self._create_small_button("Map Layers", "MapLayers16.png", checkable=True)
         self.btn_map_layers.clicked.connect(lambda checked: self.plugin.dock_widget.setVisible(checked))
-        layout.addWidget(self.btn_map_layers)
         
-        self.btn_figures = self._create_tool_button("Figures", "FigureGallery32.png", "Open Figures Gallery")
+        self.btn_figures = self._create_small_button("Figures", "FigureGallery16.png")
         self.btn_figures.clicked.connect(lambda: self._open_gbds_path("Documentation", "Figures"))
-        layout.addWidget(self.btn_figures)
+        
+        grid.addWidget(self.btn_maps, 0, 0)
+        grid.addWidget(self.btn_references, 1, 0)
+        grid.addWidget(self.btn_map_layers, 0, 1)
+        grid.addWidget(self.btn_figures, 1, 1)
+        content.addLayout(grid)
 
-    def _setup_tools_tab(self):
-        layout = self._add_tab("Tools")
+    def _build_tools_group(self):
+        content = self._create_group("Tools")
         
-        # Map Tools (Checkable, logic handled in gbds_plugin.py)
-        self.btn_well = self._create_tool_button("Well", "Well32.png", "Query Well Tool", checkable=True)
-        self.btn_las = self._create_tool_button("LAS", "Las32.png", "View LAS Tool", checkable=True)
-        self.btn_cross = self._create_tool_button("Cross\nSection", "CrossSection32.png", "Open Cross Section Tool", checkable=True)
-        self.btn_zircon = self._create_tool_button("Zircon", "Zircon32.png", "View Zircon Plot Tool", checkable=True)
+        self.btn_well = self._create_large_button("Well", "Well32.png", checkable=True)
+        self.btn_las = self._create_large_button("LAS", "Las32.png", checkable=True)
+        self.btn_cross = self._create_large_button("Cross\nSection", "CrossSection32.png", checkable=True)
+        self.btn_zircon = self._create_large_button("Zircon", "Zircon32.png", checkable=True)
+        self.btn_reference = self._create_large_button("Reference", "SelectRef32.png", checkable=True)
         
-        # Placeholder for future Reference selection tool
-        self.btn_reference = self._create_tool_button("Reference", "SelectRef32.png", "Spatial Reference Select", checkable=True)
-        
-        # Explore Tool (Standard Pan/Zoom)
-        self.btn_explore = self._create_tool_button("Explore", "GenericButtonBlue32.png", "Standard Navigation")
+        self.btn_explore = self._create_large_button("Explore", "GenericButtonBlue32.png")
         self.btn_explore.clicked.connect(lambda: self.iface.mapCanvas().unsetMapTool(self.iface.mapCanvas().mapTool()))
 
-        layout.addWidget(self.btn_well)
-        layout.addWidget(self.btn_las)
-        layout.addWidget(self.btn_cross)
-        layout.addWidget(self.btn_zircon)
-        layout.addWidget(self.btn_reference)
-        layout.addWidget(self.btn_explore)
+        content.addWidget(self.btn_well)
+        content.addWidget(self.btn_las)
+        content.addWidget(self.btn_cross)
+        content.addWidget(self.btn_zircon)
+        content.addWidget(self.btn_reference)
+        content.addWidget(self.btn_explore)
 
-    def _setup_help_tab(self):
-        layout = self._add_tab("Help")
+    def _build_help_group(self):
+        content = self._create_group("Help")
+        vbox = QVBoxLayout()
+        vbox.setSpacing(2)
         
-        self.btn_guide = self._create_tool_button("User Guide", "GenericButtonPurple32.png", "Open User Guide")
+        self.btn_guide = self._create_small_button("User Guide", "GenericButtonPurple16.png")
         self.btn_guide.clicked.connect(lambda: self._open_gbds_path("Documentation", "GBDS_User_Guide.pdf"))
-        layout.addWidget(self.btn_guide)
         
-        self.btn_tutorial = self._create_tool_button("Tutorial", "GenericButtonPurple32.png", "Open Workshop Tutorial")
+        self.btn_tutorial = self._create_small_button("Tutorial", "GenericButtonPurple16.png")
         self.btn_tutorial.clicked.connect(lambda: self._open_gbds_path("Documentation", "GBDS_Workshop.pdf"))
-        layout.addWidget(self.btn_tutorial)
         
-        self.btn_support = self._create_tool_button("Support", "GenericButtonPurple32.png", "Email GBDS Support")
+        self.btn_support = self._create_small_button("Support", "GenericButtonPurple16.png")
         self.btn_support.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("mailto:GBDS@ig.utexas.edu")))
-        layout.addWidget(self.btn_support)
+        
+        vbox.addWidget(self.btn_guide)
+        vbox.addWidget(self.btn_tutorial)
+        vbox.addWidget(self.btn_support)
+        content.addLayout(vbox)
