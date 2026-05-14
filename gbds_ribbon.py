@@ -192,7 +192,7 @@ class GBDSRibbon(QDockWidget):
         self.btn_guide.clicked.connect(lambda: self._open_gbds_path("Documentation", "GBDS_User_Guide.pdf"))
         
         self.btn_tutorial = self._create_small_button("Tutorial", "GenericButtonBlue16.png")
-        self.btn_tutorial.clicked.connect(lambda: self._open_gbds_path("Documentation", "GBDS_Workshop.pdf"))
+        self.btn_tutorial.clicked.connect(lambda: self._open_gbds_path("Documentation", "Workshop.pdf"))
         
         self.btn_support = self._create_small_button("Support", "GenericButtonRed16.png")
         self.btn_support.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("mailto:GBDS@ig.utexas.edu")))
