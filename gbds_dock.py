@@ -20,7 +20,7 @@ class GBDSCatalogDock(QDockWidget):
         # Toolbar at the top of the sidebar for the Setup button
         self.toolbar = QToolBar()
         self.setup_btn = QPushButton("⚙️ GBDS Connection")
-        self.setup_btn.setToolTip("Point this to your main GBDS folder")
+        self.setup_btn.setToolTip("Point this to your GBDS Current Database folder")
         self.setup_btn.clicked.connect(self.run_setup)
         self.toolbar.addWidget(self.setup_btn)
         self.layout.addWidget(self.toolbar)
@@ -48,7 +48,6 @@ class GBDSCatalogDock(QDockWidget):
         self.update_tree_root()
 
     def run_setup(self):
-        """Mimics the ArcGIS 'Setup' workflow."""
         folder_path = QFileDialog.getExistingDirectory(
             self, "Select your main GBDS folder"
         )
