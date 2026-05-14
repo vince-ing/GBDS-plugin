@@ -126,10 +126,10 @@ class GBDSRibbon(QDockWidget):
         vbox = QVBoxLayout()
         vbox.setSpacing(2)
         
-        self.btn_setup = self._create_small_button("Setup", "AddIn16.png", "Configure GBDS Root Folder")
+        self.btn_setup = self._create_small_button("Setup", "AddInDesktop16.png", "Configure GBDS Root Folder")
         self.btn_setup.clicked.connect(lambda: self.plugin.dock_widget.run_setup())
         
-        self.btn_about = self._create_small_button("About", "GenericButtonBlue16.png", "About GBDS Tools")
+        self.btn_about = self._create_small_button("About", "AddIn16.png", "About GBDS Tools")
         self.btn_about.clicked.connect(lambda: QMessageBox.information(self, "About", "GBDS QGIS Tools\nVersion 1.0"))
         
         vbox.addWidget(self.btn_setup)
@@ -139,10 +139,10 @@ class GBDSRibbon(QDockWidget):
     def _build_browse_group(self):
         content = self._create_group("Browse")
         
-        # Use a grid layout to stack the 4 small browse buttons cleanly
-        grid = QGridLayout()
-        grid.setSpacing(2)
-        grid.setContentsMargins(0, 0, 0, 0)
+        # Vertical stack for Maps, References, and Map Layers
+        vbox = QVBoxLayout()
+        vbox.setSpacing(2)
+        vbox.setContentsMargins(0, 0, 0, 0)
         
         self.btn_maps = self._create_small_button("Maps", "GenericButtonOrange16.png")
         self.btn_maps.clicked.connect(lambda: self._open_gbds_path("Preconstructed_Maps"))
@@ -153,14 +153,16 @@ class GBDSRibbon(QDockWidget):
         self.btn_map_layers = self._create_small_button("Map Layers", "MapLayers16.png", checkable=True)
         self.btn_map_layers.clicked.connect(lambda checked: self.plugin.dock_widget.setVisible(checked))
         
-        self.btn_figures = self._create_small_button("Figures", "FigureGallery16.png")
+        vbox.addWidget(self.btn_maps)
+        vbox.addWidget(self.btn_references)
+        vbox.addWidget(self.btn_map_layers)
+        
+        # Large button for Figures
+        self.btn_figures = self._create_large_button("Figures", "FigureGallery32.png")
         self.btn_figures.clicked.connect(lambda: self._open_gbds_path("Documentation", "Figures"))
         
-        grid.addWidget(self.btn_maps, 0, 0)
-        grid.addWidget(self.btn_references, 1, 0)
-        grid.addWidget(self.btn_map_layers, 0, 1)
-        grid.addWidget(self.btn_figures, 1, 1)
-        content.addLayout(grid)
+        content.addLayout(vbox)
+        content.addWidget(self.btn_figures)
 
     def _build_tools_group(self):
         content = self._create_group("Tools")
@@ -189,10 +191,10 @@ class GBDSRibbon(QDockWidget):
         self.btn_guide = self._create_small_button("User Guide", "GenericButtonPurple16.png")
         self.btn_guide.clicked.connect(lambda: self._open_gbds_path("Documentation", "GBDS_User_Guide.pdf"))
         
-        self.btn_tutorial = self._create_small_button("Tutorial", "GenericButtonPurple16.png")
+        self.btn_tutorial = self._create_small_button("Tutorial", "GenericButtonBlue16.png")
         self.btn_tutorial.clicked.connect(lambda: self._open_gbds_path("Documentation", "GBDS_Workshop.pdf"))
         
-        self.btn_support = self._create_small_button("Support", "GenericButtonPurple16.png")
+        self.btn_support = self._create_small_button("Support", "GenericButtonRed16.png")
         self.btn_support.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("mailto:GBDS@ig.utexas.edu")))
         
         vbox.addWidget(self.btn_guide)

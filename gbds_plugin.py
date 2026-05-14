@@ -68,9 +68,17 @@ class GBDSToolsPlugin:
         # 5. Sync UI states
         self.ribbon_widget.visibilityChanged.connect(self.action_toggle_ribbon.setChecked)
         self.dock_widget.visibilityChanged.connect(self.ribbon_widget.btn_map_layers.setChecked)
+        
+        # CONNECT GLOBAL SIGNAL
         self.iface.mapCanvas().mapToolSet.connect(self.on_map_tool_changed)
 
     def unload(self):
+        # DISCONNECT GLOBAL SIGNAL FIRST TO PREVENT GHOST TRIGGERS DURING RELOADS
+        try:
+            self.iface.mapCanvas().mapToolSet.disconnect(self.on_map_tool_changed)
+        except TypeError:
+            pass
+            
         if self.master_toolbar_btn:
             self.iface.pluginToolBar().removeAction(self.master_toolbar_btn)
             
@@ -101,10 +109,14 @@ class GBDSToolsPlugin:
 
     def on_map_tool_changed(self, tool):
         """Uncheck buttons if user switches to a different tool (like pan/zoom)"""
-        if tool != self.query_tool: self.ribbon_widget.btn_well.setChecked(False)
-        if tool != self.las_tool: self.ribbon_widget.btn_las.setChecked(False)
-        if tool != self.cross_tool: self.ribbon_widget.btn_cross.setChecked(False)
-        if tool != self.zircon_tool: self.ribbon_widget.btn_zircon.setChecked(False)
-        
-        # Placeholder for future Reference tool
-        # if tool != self.reference_tool: self.ribbon_widget.btn_reference.setChecked(False)
+        # Safety catch in case the widget is already gone
+        if not self.ribbon_widget:
+            return
+            
+        try:
+            if tool != self.query_tool: self.ribbon_widget.btn_well.setChecked(False)
+            if tool != self.las_tool: self.ribbon_widget.btn_las.setChecked(False)
+            if tool != self.cross_tool: self.ribbon_widget.btn_cross.setChecked(False)
+            if tool != self.zircon_tool: self.ribbon_widget.btn_zircon.setChecked(False)
+        except RuntimeError:
+            pass # Widget was deleted, safely ignore
