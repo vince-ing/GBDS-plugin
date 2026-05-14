@@ -8,7 +8,8 @@ from qgis.PyQt.QtCore import Qt
 from qgis.gui import QgsMapTool
 from qgis.core import (
     QgsSettings, QgsRectangle, QgsFeatureRequest, 
-    QgsCoordinateTransform, QgsProject, QgsMapLayerType
+    QgsCoordinateTransform, QgsProject, QgsMapLayerType,
+    QgsLayerDefinition
 )
 
 class TransectSelectionDialog(QDialog):
@@ -61,6 +62,38 @@ class GbdsCrossSectionTool(QgsMapTool):
         self.iface = iface
         self.setCursor(Qt.CrossCursor)
 
+    def activate(self):
+        """Triggered automatically when the user clicks the tool on the toolbar."""
+        super().activate()
+        
+        # Check if a transect layer is already in the map
+        has_transect = False
+        for layer in QgsProject.instance().mapLayers().values():
+            if "transect" in layer.name().lower() or "section" in layer.name().lower():
+                has_transect = True
+                break
+                
+        # If no transect layer is found, automatically load it
+        if not has_transect:
+            root_path = QgsSettings().value("gbds/root_path", "")
+            if root_path and os.path.exists(root_path):
+                
+                # Check both Map_Layers and Map_Layers_Q just in case
+                qlr_path = os.path.join(root_path, "Map_Layers", "Wells_and_Transects", "_GBDS Transect.qlr")
+                if not os.path.exists(qlr_path):
+                    qlr_path = os.path.join(root_path, "Map_Layers_Q", "Wells_and_Transects", "_GBDS Transect.qlr")
+                
+                if os.path.exists(qlr_path):
+                    try:
+                        QgsLayerDefinition.loadLayerDefinition(
+                            qlr_path, 
+                            QgsProject.instance(), 
+                            QgsProject.instance().layerTreeRoot()
+                        )
+                        self.iface.messageBar().pushInfo("GBDS", "Automatically loaded Transect layer.")
+                    except Exception as e:
+                        self.iface.messageBar().pushWarning("GBDS", f"Failed to load transect layer: {e}")
+
     def canvasReleaseEvent(self, event):
         if event.button() != Qt.LeftButton:
             return
@@ -79,7 +112,8 @@ class GbdsCrossSectionTool(QgsMapTool):
         map_crs = self.canvas.mapSettings().destinationCrs()
 
         for layer in self.canvas.layers():
-            if layer.type() != QgsMapLayerType.VectorLayer or not layer.isVisible():
+            # FIX: Removed the buggy .isVisible() check. If it's in canvas.layers(), it's visible.
+            if layer.type() != QgsMapLayerType.VectorLayer:
                 continue
             
             # Target layers with "transect" or "section" in the name
@@ -177,5 +211,3 @@ class GbdsCrossSectionTool(QgsMapTool):
                 "Not Found", 
                 f"Could not find a PDF for transect ID '{t_id}' or Name '{t_name}' in:\n{base_dir}"
             )
-
-#diff
