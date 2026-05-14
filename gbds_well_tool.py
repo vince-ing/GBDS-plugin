@@ -8,8 +8,8 @@ from qgis.PyQt.QtWidgets import (
     QAbstractItemView, QMessageBox, QHeaderView
 )
 from qgis.PyQt.QtCore import Qt
-from qgis.gui import QgsMapToolIdentify
-from qgis.core import QgsSettings
+from qgis.gui import QgsMapTool
+from qgis.core import QgsSettings, QgsRectangle, QgsFeatureRequest
 
 class WellSelectionDialog(QDialog):
     """Dialog shown when a map click intersects multiple wells."""
@@ -84,6 +84,7 @@ class WellInfoDialog(QDialog):
         self.setup_units_tab()
 
     def load_json_data(self):
+        # Uses the relative structure from the Base DB Folder
         json_path = os.path.join(self.root_path, "GBDSTools", "Resources", "WellQueryCache", f"{self.gbds_id}.json")
         if os.path.exists(json_path):
             try:
@@ -103,10 +104,8 @@ class WellInfoDialog(QDialog):
         tab = QWidget()
         main_hlayout = QHBoxLayout(tab)
         
-        # Left Column (Identity, Related Files, Comments)
+        # Left Column
         left_vlayout = QVBoxLayout()
-        
-        # Identity Group
         id_group = QGroupBox("Identity")
         id_form = QFormLayout(id_group)
         id_form.addRow("GBDS", self.create_readonly_line_edit(self.well_data.get("GbdsId", self.gbds_id)))
@@ -117,7 +116,6 @@ class WellInfoDialog(QDialog):
         id_form.addRow("Operator", self.create_readonly_line_edit(self.well_data.get("Operator", "")))
         left_vlayout.addWidget(id_group)
         
-        # Related Files Group
         file_group = QGroupBox("Related Files")
         file_layout = QHBoxLayout(file_group)
         self.file_combo = QComboBox()
@@ -129,7 +127,6 @@ class WellInfoDialog(QDialog):
         file_layout.addStretch()
         left_vlayout.addWidget(file_group)
         
-        # Comments Group
         comment_group = QGroupBox("Comments")
         comment_layout = QVBoxLayout(comment_group)
         comment_box = QTextEdit()
@@ -140,10 +137,8 @@ class WellInfoDialog(QDialog):
         
         main_hlayout.addLayout(left_vlayout, stretch=2)
         
-        # Right Column (Location, Depth)
+        # Right Column
         right_vlayout = QVBoxLayout()
-        
-        # Location Group
         loc_group = QGroupBox("Latitude, Longitude")
         loc_layout = QVBoxLayout(loc_group)
         lat = self.well_data.get("Latitude", "")
@@ -151,7 +146,6 @@ class WellInfoDialog(QDialog):
         loc_layout.addWidget(self.create_readonly_line_edit(f"{lat}, {lon}"))
         right_vlayout.addWidget(loc_group)
         
-        # Depth Group
         depth_group = QGroupBox("Depth")
         depth_form = QFormLayout(depth_group)
         depth_form.addRow("TVD (ft)", self.create_readonly_line_edit(self.well_data.get("TotalVerticalDepth", "")))
@@ -162,7 +156,6 @@ class WellInfoDialog(QDialog):
         
         right_vlayout.addStretch()
         main_hlayout.addLayout(right_vlayout, stretch=1)
-        
         self.tabs.addTab(tab, "Well Header")
 
     def setup_units_tab(self):
@@ -197,78 +190,86 @@ class WellInfoDialog(QDialog):
         folder = folder_map.get(file_type)
         if not folder: return
         
-        # Search path: Current_Database/Documentation/WellInfo/<Folder>/*<GBDSID>*
         search_dir = os.path.join(self.root_path, "Documentation", "WellInfo", folder)
         search_pattern = os.path.join(search_dir, f"*{self.gbds_id}*")
-        
         matches = glob.glob(search_pattern)
         
         if matches:
             file_to_open = matches[0]
             try:
-                os.startfile(file_to_open) # Works on Windows
+                os.startfile(file_to_open)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Could not open file:\n{e}")
         else:
             QMessageBox.information(self, "Not Found", f"No {file_type} file found for well {self.gbds_id} in:\n{search_dir}")
 
 
-class GbdsWellIdentifyTool(QgsMapToolIdentify):
-    """Custom Map Tool to intercept clicks and query GBDS Wells."""
+class GbdsWellIdentifyTool(QgsMapTool):
+    """Custom Map Tool using pure spatial intersection to avoid QGIS highlight bugs."""
     def __init__(self, canvas, iface):
         super().__init__(canvas)
         self.canvas = canvas
         self.iface = iface
-        self.cursor = Qt.CrossCursor
-        self.setCursor(self.cursor)
+        self.setCursor(Qt.CrossCursor)
+        self.active_dialogs = [] # <-- FIX: Prevents Python from instantly deleting the dialog window
 
     def canvasReleaseEvent(self, event):
-        # Identify features across all visible vector layers, top-down
-        results = self.identify(event.x(), event.y(), self.TopDownAll, self.VectorLayer)
+        if event.button() != Qt.LeftButton:
+            return
+
+        click_point = self.toMapCoordinates(event.pos())
         
+        # Create a 5-pixel search box around the click
+        tolerance = self.canvas.mapUnitsPerPixel() * 5
+        search_rect = QgsRectangle(
+            click_point.x() - tolerance, click_point.y() - tolerance,
+            click_point.x() + tolerance, click_point.y() + tolerance
+        )
+
         wells_found = []
         seen_ids = set()
-        
-        for result in results:
-            layer = result.mLayer
-            # Only trigger on layers containing "Well"
-            if "Well" in layer.name():
-                feat = result.mFeature
+
+        # Iterate through all currently checked/visible layers in the map
+        for layer in self.canvas.layers():
+            if layer.type() == layer.VectorLayer and "Well" in layer.name():
                 
-                # Attempt to find the ID field (checking common names)
-                gbds_id = None
-                for f_name in ["Gbds_Wel", "GBDS_ID", "Well_ID"]:
-                    idx = feat.fieldNameIndex(f_name)
-                    if idx != -1:
-                        gbds_id = feat.attribute(idx)
-                        break
-                
-                if gbds_id and str(gbds_id) not in seen_ids:
-                    seen_ids.add(str(gbds_id))
+                request = QgsFeatureRequest().setFilterRect(search_rect)
+                for feat in layer.getFeatures(request):
                     
-                    # Try to grab API and Lease for the selection table
-                    api_idx = feat.fieldNameIndex("API")
-                    api = feat.attribute(api_idx) if api_idx != -1 else ""
-                    
-                    lease_idx = feat.fieldNameIndex("Lease")
-                    lease = feat.attribute(lease_idx) if lease_idx != -1 else ""
-                    
-                    wells_found.append({
-                        "id": str(gbds_id),
-                        "api": str(api),
-                        "lease": str(lease)
-                    })
+                    # Search common attribute names for the ID
+                    gbds_id = None
+                    id_fields = ["GbdsId", "Gbds_Wel", "GBDS_ID", "Well_ID", "WellData_WellId", "WellData_Id"]
+                    for f_name in id_fields:
+                        idx = feat.fieldNameIndex(f_name)
+                        if idx != -1:
+                            val = feat.attribute(idx)
+                            if val:
+                                gbds_id = val
+                                break
+                                
+                    if gbds_id and str(gbds_id) not in seen_ids:
+                        seen_ids.add(str(gbds_id))
+                        
+                        # Grab extra info for disambiguation list
+                        api_idx = feat.fieldNameIndex("API")
+                        api = feat.attribute(api_idx) if api_idx != -1 else ""
+                        lease_idx = feat.fieldNameIndex("Lease")
+                        lease = feat.attribute(lease_idx) if lease_idx != -1 else ""
+                        
+                        wells_found.append({
+                            "id": str(gbds_id),
+                            "api": str(api),
+                            "lease": str(lease)
+                        })
 
         if not wells_found:
-            return
+            return # Ignore clicks on empty map areas
 
-        # Check if they have a configured root path
         root_path = QgsSettings().value("gbds/root_path", "")
         if not root_path or not os.path.exists(root_path):
-            self.iface.messageBar().pushWarning("Setup Required", "Please click the '⚙️ GBDS Connection' button in the sidebar first to set your database location.")
+            self.iface.messageBar().pushWarning("Setup Required", "Please click '⚙️ GBDS Connection' in the sidebar first.")
             return
 
-        # If exactly one well clicked, open it directly. If multiple, show selection dialog.
         if len(wells_found) == 1:
             self._show_well_info(wells_found[0]["id"], root_path)
         else:
@@ -277,5 +278,9 @@ class GbdsWellIdentifyTool(QgsMapToolIdentify):
                 self._show_well_info(selection_dialog.selected_gbds_id, root_path)
 
     def _show_well_info(self, gbds_id, root_path):
+        # Clean up any previously closed windows to keep memory usage low
+        self.active_dialogs = [d for d in self.active_dialogs if d.isVisible()]
+        
         dialog = WellInfoDialog(gbds_id, root_path, self.iface.mainWindow())
-        dialog.show() # Use show() instead of exec_() so they can keep it open while panning the map
+        self.active_dialogs.append(dialog)
+        dialog.show()
