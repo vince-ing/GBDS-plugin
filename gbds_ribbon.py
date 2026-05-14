@@ -173,15 +173,15 @@ class GBDSRibbon(QDockWidget):
         self.btn_zircon = self._create_large_button("Zircon", "Zircon32.png", checkable=True)
         self.btn_reference = self._create_large_button("Reference", "SelectRef32.png", checkable=True)
         
-        self.btn_explore = self._create_large_button("Explore", "GenericButtonBlue32.png")
-        self.btn_explore.clicked.connect(lambda: self.iface.mapCanvas().unsetMapTool(self.iface.mapCanvas().mapTool()))
+        #self.btn_explore = self._create_large_button("Explore", "GenericButtonBlue32.png")
+        #self.btn_explore.clicked.connect(lambda: self.iface.mapCanvas().unsetMapTool(self.iface.mapCanvas().mapTool()))
 
         content.addWidget(self.btn_well)
         content.addWidget(self.btn_las)
         content.addWidget(self.btn_cross)
         content.addWidget(self.btn_zircon)
         content.addWidget(self.btn_reference)
-        content.addWidget(self.btn_explore)
+        #content.addWidget(self.btn_explore)
 
     def _build_help_group(self):
         content = self._create_group("Help")
